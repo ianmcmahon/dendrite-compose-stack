@@ -1,0 +1,196 @@
+version: '2.3'
+services:
+  postgres:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: itsasecret
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./config/postgres-init:/docker-entrypoint-initdb.d
+    networks:
+      - internal
+
+  zoo:
+    image: zookeeper:3.4.9
+    hostname: zoo
+    expose:
+      - "2181"
+      - "2888"
+      - "3888"
+    environment:
+        ZOO_MY_ID: 1
+        ZOO_PORT: 2181
+        ZOO_SERVERS: server.1=zoo:2888:3888
+    volumes:
+      - ./data/zoo/data:/data
+      - ./data/zoo/datalog:/datalog
+    networks:
+      - internal
+
+  kafka:
+    image: confluentinc/cp-kafka:5.5.0
+    hostname: kafka
+    expose:
+      - "9092"
+    environment:
+            #KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://kafka:9092,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP:-127.0.0.1}:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      #KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      #KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_ZOOKEEPER_CONNECT: "zoo:2181"
+      #KAFKA_BROKER_ID: 1
+      #KAFKA_LOG4J_LOGGERS: "kafka.controller=INFO,kafka.producer.async.DefaultEventHandler=INFO,state.change.logger=INFO"
+      #KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - ./data/kafka/data:/var/lib/kafka/data
+    depends_on:
+      - zoo
+    networks:
+      - internal
+
+  room-server:
+    build: dendrite-docker
+    depends_on:
+      - kafka
+    tty: true
+    entrypoint: /dendrite/bin/dendrite-room-server
+    restart: always
+    networks:
+      - internal
+
+  client-api:
+    build: dendrite-docker
+    depends_on:
+      - kafka
+    tty: true
+    ports:
+      - "7771:7771"
+        #entrypoint: /dendrite/bin/dendrite-client-api-server
+    entrypoint: /bin/bash
+    restart: always
+    networks:
+      - internal
+
+  federation-api:
+    build: dendrite-docker
+    depends_on:
+      - kafka
+    tty: true
+    entrypoint: /dendrite/bin/dendrite-federation-api-server
+    restart: always
+    networks:
+      - internal
+
+  sync-api:
+    build: dendrite-docker
+    depends_on:
+      - kafka
+    tty: true
+    entrypoint: /dendrite/bin/dendrite-sync-api-server
+    restart: always
+    networks:
+      - internal
+
+  media-api:
+    build: dendrite-docker
+    volumes:
+      - ./data/dendrite/media:/var/dendrite/media:Z
+    tty: true
+    entrypoint: /dendrite/bin/dendrite-media-api-server
+    restart: always
+    networks:
+      - internal
+
+  public-rooms-api:
+    build: dendrite-docker
+    depends_on:
+      - kafka
+    tty: true
+    entrypoint: /dendrite/bin/dendrite-public-rooms-api-server
+    restart: always
+    networks:
+      - internal
+
+  federation-sender:
+    build: dendrite-docker
+    depends_on:
+      - kafka
+    tty: true
+    entrypoint: /dendrite/bin/dendrite-federation-sender-server
+    restart: always
+    networks:
+      - internal
+
+  appservice-api:
+    build: dendrite-docker
+    depends_on:
+      - kafka
+    tty: true
+    entrypoint: /dendrite/bin/dendrite-appservice-server
+    restart: always
+    networks:
+      - internal
+
+  edu-server:
+    build: dendrite-docker
+    depends_on:
+      - kafka
+    tty: true
+    entrypoint: /dendrite/bin/dendrite-edu-server
+    restart: always
+    networks:
+      - internal
+
+  key-server:
+    build: dendrite-docker
+    depends_on:
+      - kafka
+    tty: true
+    entrypoint: /dendrite/bin/dendrite-key-server
+    restart: always
+    networks:
+      - internal
+
+  server-key-api:
+    build: dendrite-docker
+    depends_on:
+      - kafka
+    tty: true
+    entrypoint: /dendrite/bin/dendrite-server-key-api-server
+    restart: always
+    networks:
+      - internal
+
+  user-api:
+    build: dendrite-docker
+    depends_on:
+      - kafka
+    tty: true
+    entrypoint: /dendrite/bin/dendrite-user-api-server
+    restart: always
+    networks:
+      - internal
+
+  proxy:
+    build: dendrite-docker
+    tty: true
+    entrypoint: '/dendrite/proxy.sh'
+    restart: always
+    ports:
+      - "8008:8008"
+      - "8448:8448"
+    networks:
+      internal:
+      dmz:
+        ipv4_address: 45.27.179.20
+
+networks:
+  internal:
+    driver: bridge
+  dmz:
+    external:
+      name: dmz-segment
+  home:
+    external:
+      name: home-segment
