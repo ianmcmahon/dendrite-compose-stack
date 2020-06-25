@@ -1,0 +1,3 @@
+[submodule "dendrite-docker"]
+	path = dendrite-docker
+	url = https://github.com/ianmcmahon/dendrite-docker
